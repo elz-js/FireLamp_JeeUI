@@ -382,12 +382,6 @@ private:
     LList<UIControl*> controls; // список контроллов текущего эффекта
     LList<UIControl*> selcontrols; // список контроллов выбранного эффекта (пока еще идет фейдер)
 
-    /**
-     * создает и инициализирует экземпляр класса выбранного эффекта
-     *
-    */
-    void workerset(uint16_t effect, const bool isCfgProceed = true);
-
     EffectWorker(const EffectWorker&);  // noncopyable
     EffectWorker& operator=(const EffectWorker&);  // noncopyable
 
@@ -396,7 +390,7 @@ private:
 
     void effectsReSort(SORT_TYPE st=(SORT_TYPE)(255));
 
-    int loadeffconfig(const uint16_t nb, const char *folder=nullptr);
+    int loadeffconfig(const uint16_t nb, const char *folder=nullptr) {return 0;}
 
     // получение пути и имени файла конфига эффекта
     const String geteffectpathname(const uint16_t nb, const char *folder=nullptr);
@@ -408,7 +402,7 @@ private:
     void chckdefconfigs(const char *folder);
 
     void savedefaulteffconfig(uint16_t nb, String &filename);
-    void saveeffconfig(uint16_t nb, char *folder=nullptr);
+    void saveeffconfig(uint16_t nb, char *folder=nullptr) {}
     void makeIndexFile(const char *folder = nullptr);
     // создать или обновить текущий индекс эффекта
     void updateIndexFile();
@@ -436,6 +430,11 @@ private:
 
 
 public:
+    /**
+     * создает и инициализирует экземпляр класса выбранного эффекта
+     *
+    */
+    void workerset(uint16_t effect, const bool isCfgProceed = true);
     std::unique_ptr<EffectCalc> worker = nullptr;           ///< указатель-класс обработчик текущего эффекта
     void initDefault(const char *folder = nullptr); // пусть вызывается позже и явно
     ~EffectWorker() { clearEffectList(); clearControlsList(); }
@@ -445,31 +444,14 @@ public:
     // дефолтный конструктор
     EffectWorker(LAMPSTATE *_lampstate) : effects(), controls(), selcontrols() {
       lampstate = _lampstate;
-    /*
-      // нельзя вызывать литлфс.бегин из конструктора, т.к. инстанс этого объекта есть в лампе, который декларируется до setup()
-      if (!LittleFS.begin()){
-          //LOG(println, F("ERROR: Can't mount filesystem!"));
-          return;
-      }
-    */
 
-      for(int8_t id=0;id<3;id++){
+      for(int8_t id=0;id<8;id++){ // Затычка, т.к. это демка, то создаем 8 контролов, чтобы были все!
         controls.add(new UIControl(
             id,                                     // id
             CONTROL_TYPE::RANGE,                    // type
-            id==0 ? String(FPSTR(TINTF_00D)) : id==1 ? String(FPSTR(TINTF_087)) : String(FPSTR(TINTF_088))           // name
+            id==0 ? String(F("Яркость")) : id==1 ? String(F("Скорость")) : String(F("Масштаб"))           // name
         ));
-        // selcontrols.add(new UIControl(
-        //     id,                                     // id
-        //     CONTROL_TYPE::RANGE,                    // type
-        //     id==0 ? String(FPSTR(TINTF_00D)) : id==1 ? String(FPSTR(TINTF_087)) : String(FPSTR(TINTF_088)),           // name
-        //     String(127),                            // value
-        //     String(1),                              // min
-        //     String(255),                            // max
-        //     String(1)                               // step
-        // ));
       }
-      //workerset(EFF_NONE);
       selcontrols = controls;
     } // initDefault(); убрал из конструктора, т.к. крайне неудобно становится отлаживать..
 

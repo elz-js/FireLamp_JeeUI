@@ -39,29 +39,57 @@ JeeUI2 lib used under MIT License Copyright (c) 2019 Marsel Akhkamov
 #define __MAIN_H_
 
 #include <Arduino.h>
-#include <SPIFFSEditor.h>
 #include "config.h"
-#include "EmbUI.h"
-#include "lamp.h"
-#include "buttons.h"
 
-// глобальные переменные для работы с ними в программе
-extern LAMP myLamp; // Объект лампы
-#ifdef ESP_USE_BUTTON
-extern Buttons *myButtons;
-extern GButton touch;
-#endif
-#ifdef MP3PLAYER
-#include "mp3player.h"
-extern MP3PLAYERDEVICE *mp3;
-#endif
+#include "effects.h"
 
-void mqttCallback(const String &topic, const String &payload);
-void  sendData(bool force=false);
+extern CRGB leds[256]; // buffer
 
-void create_parameters();
-void sync_parameters();
-void event_worker(const EVENT *);
-ICACHE_RAM_ATTR void buttonpinisr();    // обработчик прерываний пина кнопки
+static const char TCONST_FFFE[] PROGMEM = "false";
+static const char TCONST_FFFF[] PROGMEM = "true";
+
+class MICWORKER{
+public:
+  MICWORKER(uint8_t a, uint8_t b) {}
+  uint8_t getMinPeak() {return 0;}
+  uint8_t getMaxPeak() {return 0;}
+  uint8_t process(uint8_t v) {return 0;}
+  uint8_t fillSizeScaledArray(float *x, uint8_t v) {return 0;} // массив должен передаваться на 1 ед. большего размера
+};
+
+class TP{
+public:
+  String getFormattedShortTime(){return "";}
+};
+
+class EMBUI {
+public:
+  TP timeProcessor;
+};
+
+extern EMBUI embui; // см. заголовочник main.h - заглушка
+
+class LAMP
+{
+public:
+  CRGB *getUnsafeLedsArray() {return leds; }
+  uint8_t getMicMaxPeak() {return 0;}
+  uint8_t getMicFreq() {return 0;};
+  uint8_t getMicMapMaxPeak() {return 0;}
+  uint8_t getMicMapFreq() {return 0;};
+  uint16_t getPixelNumber(uint8_t a, uint8_t b) {return 0;};
+  uint16_t getPixelNumberBuff(uint8_t a, uint8_t b, uint8_t c, uint8_t d) {return 0;};
+  uint16_t getLampBrightness() {return 0;};
+  uint16_t getmaxDim() {return HEIGHT>WIDTH?HEIGHT:WIDTH;};
+  uint16_t getminDim() {return HEIGHT<WIDTH?HEIGHT:WIDTH;};
+  void setMicAnalyseDivider(uint8_t v) {}
+  uint8_t getMicScale() {return 0;};
+  uint8_t getMicNoise() {return 0;};
+  uint8_t getMicNoiseRdcLevel() {return 0;};
+  bool isPrintingNow() {return true;}
+  void sendStringToLamp(const char* text = nullptr,  const CRGB &letterColor = CRGB::Black, bool forcePrint = false, const int8_t textOffset = -128, const int16_t fixedPos = 0) {}
+};
+
+extern LAMP myLamp; // см. заголовочник main.h - заглушка
 
 #endif
