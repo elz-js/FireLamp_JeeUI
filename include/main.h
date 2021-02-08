@@ -37,49 +37,30 @@ JeeUI2 lib used under MIT License Copyright (c) 2019 Marsel Akhkamov
 
 #pragma once
 #include <Arduino.h>
-#include "JeeUI2.h"
 #include "config.h"
-#include "lamp.h"
 
-#if (PULL_MODE == LOW_PULL)
-#define BUTTON_PRESS_TRANSITION RISING
-#define BUTTON_RELEASE_TRANSITION FALLING
+// STRING Macro
+#ifndef __STRINGIFY
+ #define __STRINGIFY(a) #a
+#endif
+#define TOSTRING(x) __STRINGIFY(x)
+
+// LOG macro's
+#if defined(EMBUI_DEBUG)
+        #define LOG(func, ...) Serial.func(__VA_ARGS__)
 #else
-#define BUTTON_PRESS_TRANSITION FALLING
-#define BUTTON_RELEASE_TRANSITION RISING
+        #define LOG(func, ...) ;
 #endif
 
-class INTRFACE_GLOBALS{
-public:
-#pragma pack(push,1)
- struct { // набор глобальных флагов
-    bool isMicCal:1;
-    bool pinTransition:1;  // ловим "нажатие" кнопки
-    bool isAPMODE:1; // в случае режима AP один раз до нажатия "Выйти из настроек" форсируем переключение на вкладку WiFi, дальше этого не делаем
- };
- #pragma pack(pop)
- int mqtt_int; // интервал отправки данных по MQTT в секундах
- INTRFACE_GLOBALS() { // инициализация значениями по умолчанию
-    isMicCal = false;
-    pinTransition = true;
-    isAPMODE = false;
-}
-};
+#ifdef ESP32
+ #include <functional>
+#endif
+
+typedef std::function<void(void)> callback_function_t;
+
+#include "lamp.h"
 
 // глобальные переменные для работы с ними в программе
 extern SHARED_MEM GSHMEM; // Глобальная разделяемая память эффектов
-extern INTRFACE_GLOBALS iGLOBAL; // объект глобальных переменных интерфейса
-extern jeeui2 jee; // Создаем объект класса для работы с JeeUI2 фреймворком
+//extern INTRFACE_GLOBALS iGLOBAL; // объект глобальных переменных интерфейса
 extern LAMP myLamp; // Объект лампы
-#ifdef ESP_USE_BUTTON
-extern GButton touch;
-#endif
-
-void mqttCallback(const String &topic, const String &payload);
-void sendData();
-
-void create_parameters();
-void sync_parameters();
-void event_worker(const EVENT *);
-ICACHE_RAM_ATTR void buttonpinisr();    // обработчик прерываний пина кнопки
-void buttonhelper(bool state);

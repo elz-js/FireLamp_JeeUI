@@ -39,10 +39,11 @@ JeeUI2 lib used under MIT License Copyright (c) 2019 Marsel Akhkamov
 #define _EFFECTS_H
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
-#include <string.h>
-#include "LittleFS.h"
+//#include <ArduinoJson.h>
+//#include <string.h>
+//#include "LittleFS.h"
 #include "effects_types.h"
+#include <memory>
 
 #define DEFAULT_SLIDER 127
 #define PARAM_BUFSIZE 128
@@ -900,12 +901,6 @@ private:
     unsigned int selectIdx = 0;     ///< абсолютный номер эффекта по порядку (выбраный)
     EFFECT* effects = _EFFECTS_ARR; ///< массив настроек всех эффектов
 
-    /**
-     * создает и инициализирует экземпляр класса выбранного эффекта
-     *
-    */
-    void workerset(EFF_ENUM effect);
-
     EffectWorker(const EffectWorker&);  // noncopyable
     EffectWorker& operator=(const EffectWorker&);  // noncopyable
 
@@ -918,98 +913,12 @@ public:
 
     std::unique_ptr<EffectCalc> worker;           ///< указатель-класс обработчик текущего эффекта
 
-    void loadConfig(const char *cfg = nullptr) {
-        if (LittleFS.begin()) {
-            File configFile;
-            if (cfg == nullptr) {
-                LOG(println, F("Load default effects config file"));
-                configFile = LittleFS.open(F("/eff_config.json"), "r"); // PSTR("r") использовать нельзя, будет исключение!
-            } else {
-                LOG(printf_P, PSTR("Load %s effects config file\n"), cfg);
-                configFile = LittleFS.open(cfg, "r"); // PSTR("r") использовать нельзя, будет исключение!
-            }
-            String cfg_str = configFile.readString();
-            configFile.close();
+    /**
+     * создает и инициализирует экземпляр класса выбранного эффекта
+     *
+    */
+    void workerset(EFF_ENUM effect);
 
-            if (cfg_str == F("")){
-                LOG(println, F("Failed to open effects config file"));
-                saveConfig();
-                return;
-            }
-
-            LOG(println, F("\nStart desialization of effects\n\n"));
-
-            DynamicJsonDocument doc(8192);
-            DeserializationError error = deserializeJson(doc, cfg_str);
-            if (error) {
-                LOG(print, F("deserializeJson error: "));
-                LOG(println, error.code());
-                return;
-            }
-
-            JsonArray arr = doc.as<JsonArray>();
-            EFFECT *eff;
-            for (size_t i=0; i<arr.size(); i++) {
-                JsonObject item = arr[i];
-
-                EFF_ENUM nb = (EFF_ENUM)(item[F("nb")].as<int>());
-                eff = getEffectBy(nb);
-                if(eff->eff_nb!=EFF_NONE){
-                    eff->brightness = item[F("br")].as<int>();
-                    eff->speed = item[F("sp")].as<int>();
-                    eff->scale = item[F("sc")].as<int>();
-                    eff->isFavorite = (bool)(item[F("isF")].as<int>());
-                    eff->canBeSelected = (bool)(item[F("cbS")].as<int>());
-                    String tmp = item[F("prm")];
-                    if(eff->param!=nullptr && cfg != nullptr) // так некрасиво, но сойдет пока что... (т.е. не освобождаем память, если читаем основной конфиг, чтобы не грохнуть PROGMEM указатели)
-                        delete [] eff->param;
-                    eff->param = new char[tmp.length()+1];
-                    strcpy(eff->param, tmp.c_str());
-                }
-                LOG(printf_P, PSTR("(%d - %d - %d - %d - %d - %d - %s)\n"), nb, eff->brightness, eff->speed, eff->scale, eff->isFavorite, eff->canBeSelected, eff->param!=nullptr?FPSTR(eff->param):FPSTR(F("")));
-            }
-            doc.clear();
-        }
-    }
-
-    void saveConfig(const char *cfg = nullptr) {
-        if (LittleFS.begin()) {
-            File configFile;
-            if (cfg == nullptr) {
-                LOG(println, F("Save default effects config file"));
-                configFile = LittleFS.open(F("/eff_config.json"), "w"); // PSTR("w") использовать нельзя, будет исключение!
-            } else {
-                LOG(printf_P, PSTR("Save %s effects config file\n"), cfg);
-                configFile = LittleFS.open(cfg, "w"); // PSTR("w") использовать нельзя, будет исключение!
-            }
-            EFFECT *cur_eff;
-
-            configFile.print("[");
-            for(unsigned int i=1; i<MODE_AMOUNT; i++){ // EFF_NONE не сохраняем
-                cur_eff = &(effects[i]);
-                configFile.printf_P( PSTR("%s{\"nb\":%d,\"br\":%d,\"sp\":%d,\"sc\":%d,\"isF\":%d,\"cbS\":%d,\"prm\":\"%s\"}"),
-                    (char*)(i>1?F(","):F("")), cur_eff->eff_nb, cur_eff->brightness, cur_eff->speed, cur_eff->scale, (int)cur_eff->isFavorite, (int)cur_eff->canBeSelected,
-                    ((cur_eff->param!=nullptr)?FPSTR(cur_eff->param):FPSTR(F(""))));
-                LOG(printf_P, PSTR("%s{\"nb\":%d,\"br\":%d,\"sp\":%d,\"sc\":%d,\"isF\":%d,\"cbS\":%d,\"prm\":\"%s\"}"),
-                    (char*)(i>1?F(","):F("")), cur_eff->eff_nb, cur_eff->brightness, cur_eff->speed, cur_eff->scale, (int)cur_eff->isFavorite, (int)cur_eff->canBeSelected,
-                    ((cur_eff->param!=nullptr)?FPSTR(cur_eff->param):FPSTR(F(""))));
-            }
-            configFile.print("]");
-            configFile.flush();
-            configFile.close();
-        }
-    }
-
-    bool autoSaveConfig() {
-        static unsigned long i;
-        if(i + (30 * 1000) > millis()){  // если не пришло время - выходим из функции и сбрасываем счетчик (ожидаем бездействия в 30 секунд относительно последней записи)
-            i = millis();
-            return false;
-        }
-        saveConfig();
-        i = millis();
-        return true; // сохранились
-    }
 
     byte getModeAmount() {return MODE_AMOUNT;}
 
@@ -1030,75 +939,6 @@ public:
     byte getScaleS() { return effects[selectIdx].scale; }
     const char *getNameS() {return effects[selectIdx].eff_name;}
     const EFF_ENUM getEnS() {return effects[selectIdx].eff_nb;}
-
-    unsigned getNext() { // следующий эффект, кроме canBeSelected==false
-        unsigned i;
-        for (i = workIdx + 1; i < MODE_AMOUNT; i++) {
-            if (effects[i].canBeSelected) return i;
-        }
-        for (i = 1; i < MODE_AMOUNT; i++) {
-            if (effects[i].canBeSelected) return i;
-        }
-        return 0;
-    }
-
-    void moveNext() { // следующий эффект, кроме canBeSelected==false
-        workIdx = selectIdx = getNext();
-        curEff = effects[workIdx].eff_nb;
-        workerset(curEff);
-    }
-
-    unsigned getPrev() { // предыдущий эффект, кроме canBeSelected==false
-        unsigned i;
-        for (i = selectIdx - 1; i > 0; i--) {
-            if (effects[i].canBeSelected) return i;
-        }
-        for (i = MODE_AMOUNT - 1; i >= 0; i--){
-            if (effects[i].canBeSelected) return i;
-        }
-        return 0;
-    }
-
-    void movePrev() { // предыдущий эффект, кроме canBeSelected==false
-        workIdx = selectIdx = getPrev();
-        curEff = effects[workIdx].eff_nb;
-        workerset(curEff);
-    }
-
-    unsigned getBy(EFF_ENUM select){ // перейти по перечислению
-        for (unsigned i = MODE_AMOUNT - 1; i >= 0; i--) {
-            if (effects[i].eff_nb == select) return i;
-        }
-    }
-
-    void moveBy(EFF_ENUM select){ // перейти по перечислению
-        workIdx = selectIdx = getBy(select);
-        curEff = effects[workIdx].eff_nb;
-        workerset(curEff);
-    }
-
-    void moveSelected(){ // перейти по предворительно выбранному
-        workIdx = selectIdx;
-        curEff = effects[workIdx].eff_nb;
-        workerset(curEff);
-    }
-
-    unsigned getBy(byte cnt){ // перейти на количество шагов, к ближайшему большему (для DEMO)
-        unsigned i = (selectIdx + cnt) % MODE_AMOUNT; // смещаемся на нужное число шагов, но не больше лимита эффектов
-        unsigned tmp = i; // запомним позицию
-
-        while (!effects[i].isFavorite) { // если не избранный, то будем перебирать по +1
-            if (++i == MODE_AMOUNT) i = 0;
-            if (i == tmp) break; // круг прошли, но не нашли, на выход
-        }
-        return i;
-    }
-
-    void moveBy(byte cnt){ // перейти на количество шагов, к ближайшему большему (для DEMO)
-        workIdx = selectIdx = getBy(cnt);
-        curEff = effects[workIdx].eff_nb;
-        workerset(curEff);
-    }
 
     EFFECT *enumNextEffect(EFFECT *current){
         for(unsigned int i=0; i<MODE_AMOUNT; i++){
@@ -1137,89 +977,7 @@ public:
         return (selectIdx == workIdx);
     }
 
-    // ой как не нравятся мне джейсоны :()
-    String getParam() {
-        if (effects[selectIdx].param != nullptr) {
-            size_t slen = strlen_P(effects[selectIdx].param);
-            char buffer[slen + 4]; memset(buffer, 0, slen+4);
-            strcpy_P(buffer, effects[selectIdx].param); // Обход Exeption 3, это шаманство из-за корявого использования указателя, он одновременно может быть и на PROGMEM, и на RAM
-            String tmp = buffer;
-            return tmp;
-        }
-        return String(); // empty
-    }
-
-    void updateParam(const char *str) {
-        if (effects[selectIdx].param != nullptr && effects[workIdx].param != _R255) {
-            // херовая проверка, надобно будет потом выяснить как безопасно разпознать указатель на PROGMEM или на RAM
-            delete [] effects[selectIdx].param;
-        }
-        effects[selectIdx].param = new char[strlen(str)+1];
-        strcpy(effects[selectIdx].param, str);
-    }
-
-    void updateParam(EFFECT *eff, const char *str) {
-        if (eff->param != nullptr && eff->param != _R255) {
-            // херовая проверка, надобно будет потом выяснить как безопасно разпознать указатель на PROGMEM или на RAM
-            delete [] eff->param;
-        }
-        eff->param = new char[strlen(str)+1];
-        strcpy(eff->param, str);
-    }
-
-    String getValue(const char *src, const _PTR type){
-        if(src==nullptr)
-            return String(); // empty
-        String tmp(FPSTR(src)); // разве сюда в src прилетат указатель на чары из структуры конфига, не нa флеш??
-        //String tmp(src);
-        if (tmp.length()==0)
-            return String(); // empty
-        DynamicJsonDocument doc(PARAM_BUFSIZE);
-        tmp.replace(F("'"),F("\"")); // так делать не красиво, но шопаделаешь...
-        deserializeJson(doc,tmp);
-        JsonArray arr = doc.as<JsonArray>();
-        for (size_t i=0; i<arr.size(); i++) {
-            JsonObject item = arr[i];
-            if(item.containsKey(FPSTR(type))){
-                return item[FPSTR(type)].as<String>();
-            }
-        }
-        return String(); // empty
-    }
-
-    void setValue(const char *src, const __FlashStringHelper *type, const char *val){
-        DynamicJsonDocument doc(PARAM_BUFSIZE);
-        deserializeJson(doc,String(FPSTR(src)));
-        JsonArray arr = doc.as<JsonArray>();
-        for (size_t i=0; i<arr.size(); i++) {
-            JsonObject item = arr[i];
-            if(item.containsKey(FPSTR(type))){
-                item[FPSTR(type)]=FPSTR(val);
-            }
-        }
-        String tmp;
-        serializeJson(doc,tmp);
-        tmp.replace(F("\""),F("'")); // так делать не красиво, но шопаделаешь...
-        updateParam(tmp.c_str());
-
-        // устанавливаем переменну 'rval' если задается ключ 'R'
-        if (strcmp_P("R", (PGM_P)type) && worker)
-            worker->setrval(atoi(val));
-    }
-
-
 };
-
-typedef enum _PERIODICTIME {
-  PT_NOT_SHOW = 1,
-  PT_EVERY_60,
-  PT_EVERY_30,
-  PT_EVERY_15,
-  PT_EVERY_10,
-  PT_EVERY_5,
-  PT_EVERY_1,
-} PERIODICTIME;
-
 
 
 #endif

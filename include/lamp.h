@@ -36,40 +36,9 @@ JeeUI2 lib used under MIT License Copyright (c) 2019 Marsel Akhkamov
 */
 
 #pragma once
-#include "misc.h"
 #include "config.h" // подключаем эффекты, там же их настройки
 #include "effects.h"
-#include "OTA.h"
-#include "timeProcessor.h"
-#include <Ticker.h>
 
-#ifdef MIC_EFFECTS
-#include "micFFT.h"
-#endif
-
-/*
- * Статические константы и строки
-*/
-static const char NY_MDG_STRING1[] PROGMEM = "До нового года осталось %d %s";
-static const char NY_MDG_STRING2[] PROGMEM = "C новым %d годом!";
-
-
-
-typedef enum _LAMPMODE {
-  MODE_NORMAL = 0,
-  MODE_DEMO,
-  MODE_WHITELAMP,
-  MODE_ALARMCLOCK,
-  MODE_OTA
-} LAMPMODE;
-
-#ifdef AUX_PIN
-typedef enum _EVENT_TYPE {ON, OFF, ALARM, DEMO_ON, LAMP_CONFIG_LOAD, EFF_CONFIG_LOAD, EVENTS_CONFIG_LOAD, SEND_TEXT, PIN_STATE, AUX_ON, AUX_OFF, AUX_TOGGLE} EVENT_TYPE;
-#else
-typedef enum _EVENT_TYPE {ON, OFF, ALARM, DEMO_ON, LAMP_CONFIG_LOAD, EFF_CONFIG_LOAD, EVENTS_CONFIG_LOAD, SEND_TEXT, PIN_STATE} EVENT_TYPE;
-#endif
-
-const char T_EVENT_DAYS[] PROGMEM = "ПНВТСРЧТПТСБВС";
 
 // смена эффекта
 typedef enum _EFFSWITCH {
@@ -90,12 +59,6 @@ typedef enum _SCHEDULER {
     T_ENABLE,         // Вкл
     T_RESET,          // сброс
 } SCHEDULER;
-
-// Timings from FastLED chipsets.h
-// WS2812@800kHz - 250ns, 625ns, 375ns
-// время "отправки" кадра в матрицу, мс. где 1.5 эмпирический коэффициент
-//#define FastLED_SHOW_TIME = WIDTH * HEIGHT * 24 * (0.250 + 0.625) / 1000 * 1.5
-
 /*
  минимальная задержка между обсчетом и выводом кадра, мс
  нужна для обработки других задач в loop() между длинными вызовами
@@ -106,336 +69,15 @@ typedef enum _SCHEDULER {
 #define LED_SHOW_DELAY 1
 
 
-struct EVENT {
-    union {
-        struct {
-            bool isEnabled:1;
-            bool d1:1;
-            bool d2:1;
-            bool d3:1;
-            bool d4:1;
-            bool d5:1;
-            bool d6:1;
-            bool d7:1;
-        };
-        uint8_t raw_data;
-    };
-    uint8_t repeat;
-    uint8_t stopat;
-    uint32_t unixtime;
-    EVENT_TYPE event;
-    char *message;
-    EVENT *next = nullptr;
-    EVENT(const EVENT &event) {this->raw_data=event.raw_data; this->repeat=event.repeat; this->stopat=event.stopat; this->unixtime=event.unixtime; this->event=event.event; this->message=event.message; this->next = nullptr;}
-    EVENT() {this->raw_data=0; this->isEnabled=true; this->repeat=0; this->stopat=0; this->unixtime=0; this->event=_EVENT_TYPE::ON; this->message=nullptr; this->next = nullptr;}
-    const bool operator==(const EVENT&event) {return (this->raw_data==event.raw_data && this->event==event.event && this->unixtime==event.unixtime);}
-    String getDateTime(int offset = 0) {
-        char tmpBuf[]="9999-99-99T99:99";
-        time_t tm = unixtime+offset;
-        sprintf_P(tmpBuf,PSTR("%04u-%02u-%02uT%02u:%02u"),year(tm),month(tm),day(tm),hour(tm),minute(tm));
-        return String(tmpBuf);
-    }
-
-    String getName(int offset = 0) {
-        String buffer;
-        char tmpBuf[]="9999-99-99T99:99";
-        String day_buf(T_EVENT_DAYS);
-
-        buffer.concat(isEnabled?F("+"):F("-"));
-
-        switch (event)
-        {
-        case EVENT_TYPE::ON:
-            buffer.concat(F("ON"));
-            break;
-        case EVENT_TYPE::OFF:
-            buffer.concat(F("OFF"));
-            break;
-        case EVENT_TYPE::ALARM:
-            buffer.concat(F("ALARM"));
-            break;
-        case EVENT_TYPE::DEMO_ON:
-            buffer.concat(F("DEMO ON"));
-            break;
-        case EVENT_TYPE::LAMP_CONFIG_LOAD:
-            buffer.concat(F("LMP_GFG"));
-            break;
-        case EVENT_TYPE::EFF_CONFIG_LOAD:
-            buffer.concat(F("EFF_GFG"));
-            break;
-        case EVENT_TYPE::EVENTS_CONFIG_LOAD:
-            buffer.concat(F("EVT_GFG"));
-            break;
-        case EVENT_TYPE::SEND_TEXT:
-            buffer.concat(F("TEXT"));
-            break;
-        case EVENT_TYPE::PIN_STATE:
-            buffer.concat(F("PIN"));
-            break;
-#ifdef AUX_PIN
-        case EVENT_TYPE::AUX_ON:
-            buffer.concat(F("AUX ON"));
-            break;
-        case EVENT_TYPE::AUX_OFF:
-            buffer.concat(F("AUX OFF"));
-            break;
-        case EVENT_TYPE::AUX_TOGGLE:
-            buffer.concat(F("AUX TOGGLE"));
-            break;
-#endif
-        default:
-            break;
-        }
-        buffer.concat(F(","));
-
-        time_t tm = unixtime+offset;
-        sprintf_P(tmpBuf,PSTR("%04u-%02u-%02uT%02u:%02u"),year(tm),month(tm),day(tm),hour(tm),minute(tm));
-        buffer.concat(tmpBuf); buffer.concat(F(","));
-
-        if(repeat) {buffer.concat(repeat); buffer.concat(F(","));}
-        if(repeat && stopat) {buffer.concat(stopat); buffer.concat(F(","));}
-
-        uint8_t t_raw_data = raw_data>>1;
-        for(uint8_t i=1;i<8; i++){
-            if(t_raw_data&1){
-                buffer.concat(day_buf.substring((i-1)*2*2,i*2*2)); // по 2 байта на символ UTF16
-                buffer.concat(F(","));
-            }
-            t_raw_data >>= 1;
-        }
-
-        // if(message[0]){
-        //     memcpy(tmpBuf,message,5*2);
-        //     strcpy_P(tmpBuf+5*2,PSTR("..."));
-        // }
-        // buffer.concat(tmpBuf);
-        return buffer;
-    }
-};
-
-class EVENT_MANAGER {
-private:
-    EVENT_MANAGER(const EVENT_MANAGER&);  // noncopyable
-    EVENT_MANAGER& operator=(const EVENT_MANAGER&);  // noncopyable
-    EVENT *root = nullptr;
-    void(*cb_func)(const EVENT *) = nullptr; // функция обратного вызова
-
-    void check_event(EVENT *event, time_t current_time, int offset){
-        if(!event->isEnabled) return;
-        time_t eventtime = event->unixtime;// + offset;
-
-        //LOG(printf_P, PSTR("%d %d\n"),current_time, eventtime);
-        if(eventtime>current_time) return;
-
-        if(eventtime==current_time) // точно попадает в период времени 1 минута, для однократных событий
-        {
-            if(cb_func!=nullptr) cb_func(event); // сработало событие
-            return;
-        }
-
-        // если сегодня + периодический
-        if(event->repeat && eventtime<=current_time && year(eventtime)==year(current_time) && month(eventtime)==month(current_time) && day(eventtime)==day(current_time)){
-            //LOG(printf_P, PSTR("%d %d\n"),hour(current_time)*60+minute(current_time), event->repeat);
-            if(!(((hour(current_time)*60+minute(current_time))-(hour(eventtime)*60+minute(eventtime)))%event->repeat)){
-                if(((hour(current_time)*60+minute(current_time))<(hour(eventtime)*60+minute(eventtime)+event->stopat)) || !event->stopat){ // еще не вышли за ограничения окончания события или его нет
-                    if(cb_func!=nullptr) cb_func(event); // сработало событие
-                    return;
-                }
-            }
-        }
-
-        uint8_t cur_day = dayOfWeek(current_time)-1; // 1 == Sunday
-        if(!cur_day) cur_day = 7; // 7 = Sunday
-
-        if((event->raw_data>>cur_day)&1) { // обрабатывать сегодня
-            if(eventtime<=current_time){ // время события было раньше/равно текущего
-                //LOG(printf_P, PSTR("%d %d\n"),hour(current_time)*60+minute(current_time), event->repeat);
-                if(hour(eventtime)==hour(current_time) && minute(eventtime)==minute(current_time)){ // точное совпадение
-                    if(cb_func!=nullptr) cb_func(event); // сработало событие
-                    return;
-                }
-                if(event->repeat && hour(eventtime)<=hour(current_time)){ // периодический в сегодняшний день
-                    if(!(((hour(current_time)*60+minute(current_time))-(hour(eventtime)*60+minute(eventtime)))%event->repeat)){
-                        if(((hour(current_time)*60+minute(current_time))<(hour(eventtime)*60+minute(eventtime)+event->stopat)) || !event->stopat){ // еще не вышли за ограничения окончания события или его нет
-                            if(cb_func!=nullptr) cb_func(event); // сработало событие
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-public:
-    EVENT_MANAGER() {}
-    ~EVENT_MANAGER() { EVENT *next=root; EVENT *tmp_next=root; while(next!=nullptr) { tmp_next=next->next; if(next->message) {free(next->message);} delete next; next=tmp_next;} }
-    void addEvent(const EVENT&event) {
-        EVENT *next=root;
-        EVENT *new_event = new EVENT(event);
-        if(event.message!=nullptr){
-            new_event->message = (char *)malloc(strlen(event.message)+1);
-            strcpy(new_event->message, event.message);
-        }
-        if(next!=nullptr){
-            while(next->next!=nullptr){
-                next=next->next;
-            }
-            next->next = new_event;
-        }
-        else {
-            root = new_event;
-        }
-    }
-
-    void delEvent(const EVENT&event) {
-        EVENT *next=root;
-        EVENT *prev=root;
-        if(next!=nullptr){
-            while(next){
-                EVENT *tmp_next = next->next;
-                if(*next==event){
-                    if(next->message!=nullptr)
-                        free(next->message);
-                    delete next;
-                    if(next==root) root=tmp_next; else prev->next=tmp_next;
-                } else {
-                    prev = next;
-                }
-                next=tmp_next;
-            }
-        }
-    }
-
-    void setEventCallback(void(*func)(const EVENT *))
-    {
-        cb_func = func;
-    }
-
-    EVENT *getNextEvent(EVENT *next=nullptr)
-    {
-        if(next==nullptr) return root; else return next->next;
-    }
-
-    void events_handle(time_t current_time, int offset)
-    {
-        EVENT *next = getNextEvent(nullptr);
-        while (next!=nullptr)
-        {
-            check_event(next, current_time, offset);
-            next = getNextEvent(next);
-        }
-    }
-
-    void loadConfig(const char *cfg = nullptr) {
-        if (LittleFS.begin()) {
-            File configFile;
-            if (cfg == nullptr) {
-                LOG(println, F("Load default events config file"));
-                configFile = LittleFS.open(F("/events_config.json"), "r"); // PSTR("r") использовать нельзя, будет исключение!
-            } else {
-                LOG(printf_P, PSTR("Load %s events config file\n"), cfg);
-                configFile = LittleFS.open(cfg, "r"); // PSTR("r") использовать нельзя, будет исключение!
-            }
-			String cfg_str = configFile.readString();
-            configFile.close();
-
-            if (cfg_str == F("")){
-                LOG(println, F("Failed to open events config file"));
-                saveConfig();
-                return;
-            }
-
-            LOG(println, F("\nStart desialization of events\n\n"));
-
-            DynamicJsonDocument doc(8192);
-            DeserializationError error = deserializeJson(doc, cfg_str);
-            if (error) {
-                LOG(print, F("deserializeJson error: "));
-                LOG(println, error.code());
-                LOG(println, cfg_str);
-                return;
-            }
-
-            JsonArray arr = doc.as<JsonArray>();
-            EVENT event;
-            for (size_t i=0; i<arr.size(); i++) {
-                JsonObject item = arr[i];
-                event.raw_data = item[F("raw")].as<int>();
-                event.unixtime = item[F("ut")].as<unsigned long>();
-                event.event = (EVENT_TYPE)(item[F("ev")].as<int>());
-                event.repeat = item[F("rp")].as<int>();
-                event.stopat = item[F("sa")].as<int>();
-                String tmpStr = item[F("msg")].as<String>();
-                event.message = (char *)tmpStr.c_str();
-                addEvent(event);
-                LOG(printf_P, PSTR("[%u - %u - %u - %u - %u - %s]\n"), event.raw_data, event.unixtime, event.event, event.repeat, event.stopat, event.message);
-            }
-            doc.clear();
-        }
-    }
-
-    void saveConfig(const char *cfg = nullptr) {
-        if (LittleFS.begin()) {
-            File configFile;
-            if (cfg == nullptr) {
-                LOG(println, F("Save default events config file"));
-                configFile = LittleFS.open(F("/events_config.json"), "w"); // PSTR("w") использовать нельзя, будет исключение!
-            } else {
-                LOG(printf_P, PSTR("Save %s events config file\n"), cfg);
-                configFile = LittleFS.open(cfg, "w"); // PSTR("w") использовать нельзя, будет исключение!
-            }
-            configFile.print("[");
-            EVENT *next=root;
-            int i=1;
-            while(next!=nullptr){
-                configFile.printf_P(PSTR("%s{\"raw\":%u,\"ut\":%u,\"ev\":%u,\"rp\":%u,\"sa\":%u,\"msg\":\"%s\"}"),
-                    (char*)(i>1?F(","):F("")), next->raw_data, next->unixtime, next->event, next->repeat, next->stopat,
-                    ((next->message!=nullptr)?next->message:(char*)F("")));
-                LOG(printf_P, PSTR("%s{\"raw\":%u,\"ut\":%u,\"ev\":%u,\"rp\":%u,\"sa\":%u,\"msg\":\"%s\"}"),
-                    (char*)(i>1?F(","):F("")), next->raw_data, next->unixtime, next->event, next->repeat, next->stopat,
-                    ((next->message!=nullptr)?next->message:(char*)F("")));
-                i++;
-                next=next->next;
-            }
-            configFile.print("]");
-            configFile.flush();
-            configFile.close();
-        }
-    }
-};
-
 class LAMP {
 private:
 #pragma pack(push,1)
  struct {
     bool MIRR_V:1; // отзрекаливание по V
     bool MIRR_H:1; // отзрекаливание по H
-    bool dawnFlag:1; // флаг устанавливается будильником "рассвет"
-    bool ONflag:1; // флаг включения/выключения
-    bool manualOff:1; // будильник, разпознавание действия пользователя во время работы будильника, либо факта окончания действия рассвета
-    bool isFaderON:1; // признак того, что фейдер используется для эффектов
-    bool isGlobalBrightness:1; // признак использования глобальной яркости для всех режимов
-    bool isFirstHoldingPress:1; // флаг: только начали удерживать?
-    bool startButtonHolding:1; // кнопка удерживается
-    bool buttonEnabled:1; // кнопка обрабатывается если true
-    bool brightDirection:1; // направление изменения яркости для кнопки
-    bool speedDirection:1; // направление изменения скорости для кнопки
-    bool scaleDirection:1; // направление изменения масштаба для кнопки
-    bool setDirectionTimeout:1; // флаг: начало отсчета таймаута на смену направления регулировки
-    bool isStringPrinting:1; // печатается ли прямо сейчас строка?
-    bool isEffectsDisabledUntilText:1; // признак отключения эффектов, пока выводится текст
-    bool isOffAfterText:1; // признак нужно ли выключать после вывода текста
-    bool isEventsHandled:1; // глобальный признак обработки событий
-#ifdef MIC_EFFECTS
-    bool isCalibrationRequest:1; // находимся ли в режиме калибровки микрофона
-    bool isMicOn:1; // глобальное включение/выключение микрофона
-    uint8_t micAnalyseDivider:2; // делитель анализа микрофона 0 - выключен, 1 - каждый раз, 2 - каждый четвертый раз, 3 - каждый восьмой раз
-#endif
  };
  #pragma pack(pop)
-    //Button
-    byte numHold = 0; // режим удержания
-    byte txtOffset = 0; // смещение текста относительно края матрицы
+
     byte globalBrightness = BRIGHTNESS; // глобальная яркость, пока что будет использоваться для демо-режимов
 #ifdef LAMP_DEBUG
     uint8_t fps = 0;    // fps counter
@@ -444,77 +86,11 @@ private:
     const uint16_t maxDim = ((WIDTH>HEIGHT)?WIDTH:HEIGHT);
     const uint16_t minDim = ((WIDTH<HEIGHT)?WIDTH:HEIGHT);
 
-    LAMPMODE mode = MODE_NORMAL; // текущий режим
-    LAMPMODE storedMode = MODE_NORMAL; // предыдущий режим
     EFF_ENUM storedEffect = EFF_NONE;
-
-    PERIODICTIME enPeriodicTimePrint; // режим периодического вывода времени
-
-#ifdef MIC_EFFECTS
-    MICWORKER *mw = nullptr;
-    float mic_noise = 0.0; // уровень шума в ед.
-    float mic_scale = 1.0; // коэф. смещения
-    float last_freq = 0.0; // последняя измеренная часота
-    float samp_freq = 0.0; // часота семплирования
-    uint8_t last_max_peak = 0; // последнее максимальное амплитудное значение (по модулю)
-    uint8_t last_min_peak = 0; // последнее минимальное амплитудное значение (по модулю)
-    MIC_NOISE_REDUCE_LEVEL noise_reduce = MIC_NOISE_REDUCE_LEVEL::NONE; // уровень шумодава
-    void micHandler();
-#endif
-
-    DynamicJsonDocument docArrMessages; // массив сообщений для вывода на лампу
-
-    timerMinim tmConfigSaveTime;    // таймер для автосохранения
-    timerMinim tmNumHoldTimer;      // таймаут удержания кнопки в мс
-    timerMinim tmStringStepTime;    // шаг смещения строки, в мс
-    timerMinim tmNewYearMessage;    // период вывода новогоднего сообщения
-
-    time_t NEWYEAR_UNIXDATETIME=1609459200U;    // дата/время в UNIX формате, см. https://www.cy-pr.com/tools/time/ , 1609459200 => Fri, 01 Jan 2021 00:00:00 GMT
 
     // async fader and brightness control vars and methods
     uint8_t _brt, _steps;
     int8_t _brtincrement;
-    Ticker _fadeTicker;             // планировщик асинхронного фейдера
-    Ticker _fadeeffectTicker;       // планировщик затухалки между эффектами
-    Ticker _buttonTicker;           // планировщик кнопки
-    Ticker _demoTicker;             // планировщик Смены эффектов в ДЕМО
-    Ticker _effectsTicker;          // планировщик обработки эффектов
-    //Ticker _nextLoop;               // планировщик для тасок на ближайший луп
-    void brightness(const uint8_t _brt, bool natural=true);     // низкоуровневая крутилка глобальной яркостью для других методов
-    void fader(const uint8_t _tgtbrt, std::function<void(void)> callback=nullptr);          // обработчик затуания, вызывается планировщиком в цикле
-
-
-#ifdef ESP_USE_BUTTON
-    GButton touch;
-    void buttonTick(); // обработчик кнопки
-    timerMinim tmChangeDirectionTimer;     // таймаут смены направления увеличение-уменьшение при удержании кнопки
-    void changeDirection(byte numHold);
-    void debugPrint();
-#endif
-    void effectsTick(); // обработчик эффектов
-
-#ifdef VERTGAUGE
-    byte xStep; byte xCol; byte yStep; byte yCol; // для индикатора
-    void GaugeShow();
-#endif
-    void ConfigSaveCheck(){ if(tmConfigSaveTime.isReady()) {if(effects.autoSaveConfig()) tmConfigSaveTime.setInterval(0); } }
-
-#ifdef OTA
-    OtaManager otaManager;
-#endif
-    static void showWarning(CRGB::HTMLColorCode color, uint32_t duration, uint16_t blinkHalfPeriod); // Блокирующая мигалка
-
-    void doPrintStringToLamp(const char* text = nullptr,  const CRGB &letterColor = CRGB::Black, const int8_t textOffset = -128, const int16_t fixedPos = 0);
-    bool fillStringManual(const char* text,  const CRGB &letterColor, bool stopText = false, bool isInverse = false, int32_t pos = 0, int8_t letSpace = LET_SPACE, int8_t txtOffset = TEXT_OFFSET, int8_t letWidth = LET_WIDTH, int8_t letHeight = LET_HEIGHT); // -2147483648
-    void drawLetter(uint16_t letter, int16_t offset,  const CRGB &letterColor, int8_t letSpace, int8_t txtOffset, bool isInverse, int8_t letWidth, int8_t letHeight);
-    uint8_t getFont(uint8_t asciiCode, uint8_t row);
-
-    void alarmWorker();
-
-    /*
-     * Смена эффекта в демо по таймеру
-     */
-    void demoNext() { RANDOM_DEMO ? switcheffect(SW_RND, isFaderON) : switcheffect(SW_NEXT_DEMO, isFaderON);}
 
     /*
      * вывод готового кадра на матрицу,
@@ -525,100 +101,32 @@ private:
 
 public:
     EffectWorker effects; // объект реализующий доступ к эффектам
-    EVENT_MANAGER events; // Объект реализующий доступ к событиям
 
-#ifdef MIC_EFFECTS
-    void setMicCalibration() {isCalibrationRequest = true;}
-    bool isMicCalibration() {return isCalibrationRequest;}
-    float getMicScale() {return mic_scale;}
-    void setMicScale(float scale) {mic_scale = scale;}
-    float getMicNoise() {return mic_noise;}
-    void setMicNoise(float noise) {mic_noise = noise;}
-    void setMicNoiseRdcLevel(MIC_NOISE_REDUCE_LEVEL lvl) {noise_reduce = lvl;}
-    MIC_NOISE_REDUCE_LEVEL getMicNoiseRdcLevel() {return noise_reduce;}
-    uint8_t getMicMaxPeak() {return isMicOn?last_max_peak:0;}
-    uint8_t getMicMapMaxPeak() {return isMicOn?((last_max_peak>(uint8_t)mic_noise)?(last_max_peak-(uint8_t)mic_noise)*2:1):0;}
-    float getMicFreq() {return isMicOn?last_freq:0;}
-    uint8_t getMicMapFreq() {
-        float minFreq=(log((float)(SAMPLING_FREQ>>1)/MICWORKER::samples));
-        float scale = 255.0/(log(20000.0)-minFreq);
-        return (uint8_t)(isMicOn?(log(last_freq)-minFreq)*scale:0);
-    }
-    void setMicOnOff(bool val) {isMicOn = val;}
-    bool isMicOnOff() {return isMicOn;}
-    void setMicAnalyseDivider(uint8_t val) {micAnalyseDivider = val&3;}
-#endif
-
-    // Lamp brightness control (здесь методы работы с конфигурационной яркостью, не с LED!)
-    byte getLampBrightness() { return (mode==MODE_DEMO || isGlobalBrightness)?globalBrightness:effects.getBrightness();}
-    byte getNormalizedLampBrightness() { return (byte)(((unsigned int)BRIGHTNESS)*((mode==MODE_DEMO || isGlobalBrightness)?globalBrightness:effects.getBrightnessS())/255);}
-    void setLampBrightness(byte brg) { if(mode==MODE_DEMO || isGlobalBrightness) {setGlobalBrightness(brg);} else {effects.setBrightnessS(brg);} }
-    void setGlobalBrightness(byte brg) {globalBrightness = brg;}
-    void setIsGlobalBrightness(bool val) {isGlobalBrightness = val;}
-    bool IsGlobalBrightness() {return isGlobalBrightness;}
-
-    LAMPMODE getMode() {return mode;}
-
-    TimeProcessor timeProcessor;
-    void refreshTimeManual() { timeProcessor.handleTime(true); }
-
-    void sendString(const char* text, const CRGB &letterColor);
-    void sendStringToLamp(const char* text = nullptr,  const CRGB &letterColor = CRGB::Black, bool forcePrint = false, const int8_t textOffset = -128, const int16_t fixedPos = 0);
-    bool isPrintingNow() { return isStringPrinting; }
     LAMP();
 
-    void handle();          // главная функция обработки эффектов
+//    void handle();          // главная функция обработки эффектов
     void lamp_init();       // первичная инициализация Лампы
-
-    void ConfigSaveSetup(int in){ tmConfigSaveTime.setInterval(in); tmConfigSaveTime.reset(); }
-    void setFaderFlag(bool flag) {isFaderON = flag;}
-    bool getFaderFlag() {return isFaderON;}
-    void setButtonOn(bool flag) {buttonEnabled = flag;}
-    void disableEffectsUntilText() {isEffectsDisabledUntilText = true; FastLED.clear();}
-    void setOffAfterText() {isOffAfterText = true;}
-    void setIsEventsHandled(bool flag) {isEventsHandled = flag;}
-    bool IsEventsHandled() {return isEventsHandled;}
-    bool isLampOn() {return ONflag;}
-    void setMIRR_V(bool flag) {if (flag!=MIRR_V) { MIRR_V = flag; FastLED.clear();}}
-    void setMIRR_H(bool flag) {if (flag!=MIRR_H) { MIRR_H = flag; FastLED.clear();}}
-    void setTextMovingSpeed(uint8_t val) {tmStringStepTime.setInterval(val);}
-    void setTextOffset(uint8_t val) { txtOffset=val;}
-    void setPeriodicTimePrint(PERIODICTIME val) { enPeriodicTimePrint = val; }
-
-    void periodicTimeHandle();
-
-    void startAlarm();
-    void startDemoMode();
-    void startNormalMode();
-#ifdef OTA
-    void startOTAUpdate();
-    void startOTA() { otaManager.RequestOtaUpdate(); if (otaManager.RequestOtaUpdate()) { startOTAUpdate(); } }
-#endif
-    void newYearMessageHandle();
-    void setNYMessageTimer(int in){ tmNewYearMessage.setInterval(in*60*1000); tmNewYearMessage.reset(); }
-    void setNYUnixTime(time_t tm){ NEWYEAR_UNIXDATETIME = tm; }
 
     // ---------- служебные функции -------------
     uint16_t getmaxDim() {return maxDim;}
     uint16_t getminDim() {return minDim;}
 
-    void changePower(); // плавное включение/выключение
-    void changePower(bool);
-
     uint32_t getPixelNumber(uint16_t x, uint16_t y); // получить номер пикселя в ленте по координатам
     uint32_t getPixColor(uint32_t thisSegm); // функция получения цвета пикселя по его номеру
     uint32_t getPixColorXY(uint16_t x, uint16_t y) { return getPixColor(getPixelNumber(x, y)); } // функция получения цвета пикселя в матрице по его координатам
+
     void fillAll(CRGB color); // залить все
     void drawPixelXY(int16_t x, int16_t y, CRGB color); // функция отрисовки точки по координатам X Y
+
     CRGB *getUnsafeLedsArray(){return leds;}
     CRGB *setLeds(uint16_t idx, CHSV val) { leds[idx] = val; return &leds[idx]; }
     CRGB *setLeds(uint16_t idx, CRGB val) { leds[idx] = val; return &leds[idx]; }
     void setLedsfadeToBlackBy(uint16_t idx, uint8_t val) { leds[idx].fadeToBlackBy(val); }
     void setLedsNscale8(uint16_t idx, uint8_t val) { leds[idx].nscale8(val); }
+
     //fadeToBlackBy
     void dimAll(uint8_t value) { for (uint16_t i = 0; i < NUM_LEDS; i++) { leds[i].nscale8(value); } }
     CRGB getLeds(uint16_t idx) { return leds[idx]; }
-    //CRGB *getLeds() { return leds; }
     void blur2d(uint8_t val) {::blur2d(leds,WIDTH,HEIGHT,val);}
 
     /*
@@ -638,22 +146,9 @@ public:
      */
     uint8_t getBrightness(const bool natural=true);
 
-    /*
-     * Non-blocking light fader, uses system ticker to globaly fade FastLED brighness
-     * within specified duration
-     * @param uint8_t _targetbrightness - end value for the brighness to fade to, FastLED dim8
-     *                                   function applied internaly for natiral dimming
-     * @param uint32_t _duration - fade effect duraion, ms
-     * @param callback  -  callback-функция, которая будет выполнена после окончания затухания (без блокировки)
-     */
-    void fadelight(const uint8_t _targetbrightness=0, const uint32_t _duration=FADE_TIME, std::function<void()> callback=nullptr);
+    uint8_t getLampBrightness(){return _brt;};
 
-    /*
-     * крючёк для обработки нажатия кнопки по прерываниям
-     * вызов метода, готоврит о том что состояние пина изменилось, нужно его перечитать
-     * @param bool state - true, кнопку "нажали", false - "отпустили"
-     */
-    void buttonPress(bool state);
+    void brightness(const uint8_t _brt, bool natural);
 
     /*
      * переключатель эффектов для других методов,
@@ -664,18 +159,6 @@ public:
      * skip - системное поле - пропуск фейдера
      */
     void switcheffect(EFFSWITCH action = SW_NONE, bool fade = FADE, EFF_ENUM effnb = EFF_ENUM::EFF_NONE, bool skip = false);
-
-    /*
-     * включает/выключает "демо"-таймер
-     * @param TICKER action - enable/disable/reset
-     */
-    void demoTimer(SCHEDULER action);
-
-    /*
-     * включает/выключает "эффект"-таймер
-     * @param TICKER action - enable/disable/reset
-     */
-    void effectsTimer(SCHEDULER action);
 
 
     ~LAMP() {}

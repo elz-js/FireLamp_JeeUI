@@ -162,13 +162,7 @@ void EffectCalc::scale2pallete(){
   if (!usepalettes)
     return;
 
-  String var = myLamp.effects.getValue(myLamp.effects.getCurrent()->param, F("R"));
-  if(!var.isEmpty()){
-    rval = var.toInt();
-    palettemap(palettes, rval);
-  } else {
     palettemap(palettes, scale);
-  }
 }
 
 // непустой дефолтный деструктор (если понадобится)
@@ -2924,62 +2918,6 @@ bool EffectCube2d::cube2dRoutine(CRGB *leds, const char *param)
 }
 
 //--------------
-bool EffectTime::run(CRGB *ledarr, const char *opt){
-  if((millis() - lastrun - EFFECTS_RUN_TIMER) < (unsigned)((255-speed)) && (speed==1 || speed==255)){
-      myLamp.dimAll(254);
-    return true;
-  } else {
-    lastrun = millis();
-  }
-  // if (dryrun())
-  //   return false;
-  return timePrintRoutine(*&ledarr, &*opt);
-}
-
-void EffectTime::load(){
-  palettesload();    // подгружаем дефолтные палитры
-
-  if(((curTimePos<=(signed)LET_WIDTH*2-(LET_WIDTH/2)) || (curTimePos>=(signed)WIDTH+(LET_WIDTH/2))) )
-  {
-    curTimePos = random(LET_WIDTH*2,WIDTH);
-    hColor[0] = ColorFromPalette(*curPalette, random8());
-    mColor[0] = ColorFromPalette(*curPalette, random8());
-  }
-}
-
-bool EffectTime::timePrintRoutine(CRGB *leds, const char *param)
-{
-  if (speed==1 || speed==255){
-    EVERY_N_SECONDS(5){
-      FastLED.clear();
-      uint8_t xPos = random(LET_WIDTH*2,WIDTH);
-      String tmp = myLamp.timeProcessor.getFormattedShortTime();
-      myLamp.sendStringToLamp(tmp.substring(0,2).c_str(), ColorFromPalette(*curPalette, random8()), false, HEIGHT-LET_HEIGHT, xPos);
-      myLamp.sendStringToLamp(tmp.substring(3,5).c_str(), ColorFromPalette(*curPalette, random8()), false, HEIGHT-(LET_HEIGHT*2), xPos);
-    }
-  } else {
-    //FastLED.clear();
-    myLamp.dimAll(250-speed/3); // небольшой шлейф, чисто как визуальный эффект :)
-    int16_t xPos = curTimePos;
-    if((xPos<=(signed)LET_WIDTH*2-((signed)LET_WIDTH/2)) || (xPos>=(signed)WIDTH+((signed)LET_WIDTH/2))){
-      if(xPos<=(signed)LET_WIDTH*2){
-        timeShiftDir = false;
-        xPos=LET_WIDTH*2-(LET_WIDTH/2); // будет на полсимвола выходить за пределы, так задумано :)
-      } else {
-        timeShiftDir = true;
-        xPos=WIDTH+(LET_WIDTH/2); // будет на полсимвола выходить за пределы, так задумано :)
-      }
-      hColor[0] = ColorFromPalette(*curPalette, random8());
-      mColor[0] = ColorFromPalette(*curPalette, random8());
-    }
-    String tmp = myLamp.timeProcessor.getFormattedShortTime();
-    uint8_t shift = beatsin8(speed/5, -1, 1);
-    myLamp.sendStringToLamp(tmp.substring(0,2).c_str(), hColor[0], false, HEIGHT-LET_HEIGHT+shift, xPos);
-    myLamp.sendStringToLamp(tmp.substring(3,5).c_str(), mColor[0], false, HEIGHT-(LET_HEIGHT*2)+shift, xPos);
-    curTimePos=curTimePos+(0.23*(speed/255.0))*(timeShiftDir?-1:1); // смещаем
-  }
-  return true;
-}
 
 // ------------------------------ ЭФФЕКТ ДЫМ ----------------------
 bool EffectMStreamSmoke::run(CRGB *ledarr, const char *opt){
@@ -3238,9 +3176,9 @@ void EffectFire::drawFrame(uint8_t pcnt, bool isColored) {                  // �
 void EffectWorker::workerset(EFF_ENUM effect){
   switch (effect)
   {
-  case EFF_ENUM::EFF_TIME :
-    worker = std::unique_ptr<EffectTime>(new EffectTime());
-    break;
+  //case EFF_ENUM::EFF_TIME :
+  //  worker = std::unique_ptr<EffectTime>(new EffectTime());
+  //  break;
   case EFF_ENUM::EFF_SWIRL :
     worker = std::unique_ptr<EffectSwirl>(new EffectSwirl());
     break;
