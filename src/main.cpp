@@ -9,7 +9,7 @@ LAMPSTATE lampstate;
 EffectWorker demka(&lampstate);
 void setup() {
     Serial.begin(460800);
-    demka.workerset( (EFF_ENUM)random(1, demka.getModeAmount()), false );
+    demka.workerset( (EFF_ENUM)random(1, demka.getModeAmount()) );
 }
 
 void loop() {
@@ -22,7 +22,7 @@ void loop() {
   // каждые 10 сек меняем эффект на случайный
   if (millis()-timer1 > 10000){
       EFF_ENUM eff = (EFF_ENUM)random(1, 255);
-      demka.workerset( eff, false );
+      demka.workerset( eff );
       timer1 = millis();
       Serial.print("next effect:");
       Serial.println(eff);
