@@ -109,6 +109,12 @@ void setup() {
 #endif
   sync_parameters();        // падение есп32 не воспоизводится, kDn
 
+    embui.setPubInterval(60);   // change periodic WebUI publish interval to 60 sec
+
+    // periodic MQTT publish
+    Task *t = new Task(myLamp.getmqtt_int() * TASK_SECOND, TASK_FOREVER, [](){ sendData(); }, &ts, false);
+    t->enableDelayed();
+
 #if defined LED_BUILTIN && defined DISABLE_LED_BUILTIN
     digitalWrite(LED_BUILTIN, HIGH); // "душим" светодиод nodeMCU
 #endif
@@ -119,8 +125,7 @@ void loop() {
     embui.handle(); // цикл, необходимый фреймворку
     // TODO: Проконтроллировать и по возможности максимально уменьшить создание объектов на стеке
     myLamp.handle(); // цикл, обработка лампы
-    // эта функция будет слать периодическую информацию, но позже, когда до этого руки дойдут
-    sendData(); // цикл отправки данных по MQTT
+
 #ifdef USE_FTP
     ftp_loop(); // цикл обработки событий фтп-сервера
 #endif
@@ -141,16 +146,11 @@ ICACHE_FLASH_ATTR void mqttCallback(const String &topic, const String &payload){
   }
 }
 
-// нужно подчистить эту функцию, печатать инфо можно более аккуратным способом
-ICACHE_FLASH_ATTR void sendData(bool force){
-    static unsigned long i;
-
-    if((i + (myLamp.getmqtt_int() * 1000) > millis() || myLamp.getmqtt_int() == 0) && !force) return; // если не пришло время, или интервал = 0 - выходим из функции
-    i = millis();
-    // всё, что ниже будет выполняться через интервалы
+// Periodic MQTT publishing
+void sendData(bool force){
 
     // Здесь отсылаем текущий статус лампы и признак, что она живая (keepalive)
-    LOG(println, F("sendData :"));
+    LOG(println, F("send MQTT Data :"));
     DynamicJsonDocument obj(256);
     //JsonObject obj = doc.to<JsonObject>();
     obj[FPSTR(TCONST_0001)] = String(embui.timeProcessor.getFormattedShortTime());
@@ -163,7 +163,6 @@ ICACHE_FLASH_ATTR void sendData(bool force){
     serializeJson(obj, out);
     LOG(println, out);
     embui.publish(sendtopic, out, true); // отправляем обратно в MQTT в топик embui/pub/
-    obj.clear(); obj.garbageCollect();
 
     // // также отправим конфиг текущего эффекта
     // sendtopic=String(FPSTR(TCONST_008B))+String(FPSTR(TCONST_00AE));

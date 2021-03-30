@@ -105,34 +105,42 @@ void AUX_toggle(bool key)
 //#define EFF_NUMBER (numList ? (String(eff->eff_nb) + ". ") : "")
 #define EFF_NUMBER   (numList ? (eff->eff_nb <= 255 ? (String(eff->eff_nb) + ". ") : (String((byte)(eff->eff_nb & 0xFF)) + "." + String((byte)(eff->eff_nb >> 8) - 1U) + ". ")) : "")
 
+
+/**
+ * @brief - callback function that is triggered every PUB_PERIOD seconds via EmbUI scheduler
+ * used to publish periodic updates to websocket clients, if any
+ * 
+ */
 void pubCallback(Interface *interf){
+    LOG(println, F("pubCallback :"));
     if (!interf) return;
-    //return; // Временно для увеличения стабильности. Пока разбираюсь с падениями.
     interf->json_frame_value();
     interf->value(FPSTR(TCONST_0001), embui.timeProcessor.getFormattedShortTime(), true);
-    interf->value(FPSTR(TCONST_0002), String(ESP.getFreeHeap()), true);
-    //interf->value(FPSTR(TCONST_008F), String(millis()/1000), true);
+    interf->value(FPSTR(TCONST_0002), ESP.getFreeHeap(), true);
     char fuptime[16];
     uint32_t tm = millis()/1000;
     sprintf_P(fuptime, PSTR("%u.%02u:%02u:%02u"),tm/86400,(tm/3600)%24,(tm/60)%60,tm%60);
-    interf->value(FPSTR(TCONST_008F), String(fuptime), true);
+    interf->value(FPSTR(TCONST_008F), fuptime, true);
 
 #ifdef ESP8266
     FSInfo fs_info;
     LittleFS.info(fs_info);
     //LOG(printf_P,PSTR("FS INFO: fs_info.totalBytes=%d,fs_info.usedBytes=%d\n"),fs_info.totalBytes,fs_info.usedBytes);
-    interf->value(FPSTR(TCONST_00C2), String(fs_info.totalBytes-fs_info.usedBytes), true);
+    interf->value(FPSTR(TCONST_00C2), fs_info.totalBytes-fs_info.usedBytes, true);
 #endif
 
 #ifdef ESP32
     // size_t t_bytes=0, u_bytes=0;
     // esp_littlefs_info(nullptr, &t_bytes, &u_bytes);
     // interf->value(FPSTR(TCONST_00C2), String(t_bytes - u_bytes), true);
-    interf->value(FPSTR(TCONST_00C2), String(LittleFS.totalBytes() - LittleFS.usedBytes()), true);
+    interf->value(FPSTR(TCONST_00C2), LittleFS.totalBytes() - LittleFS.usedBytes(), true);
 #endif
 
     int32_t rssi = WiFi.RSSI();
-    interf->value(FPSTR(TCONST_00CE), String(constrain(map(rssi, -85, -40, 0, 100),0,100)) + F("% (") + String(rssi) + F("dBm)"), true);
+    char buff[16];
+    sprintf_P(buff, PSTR("%d%% (%ddBm)"), constrain(map(rssi, -85, -40, 0, 100),0,100), rssi);
+    interf->value(FPSTR(TCONST_00CE), buff, true);
+    //interf->value(FPSTR(TCONST_00CE), String(constrain(map(rssi, -85, -40, 0, 100),0,100)) + F("% (") + String(rssi) + F("dBm)"), true);
 
     interf->json_frame_flush();
 }
