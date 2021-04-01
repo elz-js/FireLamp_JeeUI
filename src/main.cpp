@@ -41,7 +41,7 @@ JeeUI2 lib used under MIT License Copyright (c) 2019 Marsel Akhkamov
 #ifdef USE_FTP
   #include "ftpSrv.h"
 #endif
-#ifdef TM1637
+#ifdef TM_1637
   #include "tm.h"
 #endif
 
@@ -113,7 +113,7 @@ void setup() {
 #endif
   sync_parameters();        // падение есп32 не воспоизводится, kDn
 
-#ifdef TM1637
+#ifdef TM_1637
   tm_setup();
 #endif 
 
@@ -133,7 +133,7 @@ void loop() {
     ftp_loop(); // цикл обработки событий фтп-сервера
 #endif
 
-#ifdef TM1637
+#ifdef TM_1637
     EVERY_N_SECONDS(1) {
         tm_loop();
     }

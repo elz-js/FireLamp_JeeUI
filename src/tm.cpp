@@ -36,20 +36,22 @@ JeeUI2 lib used under MIT License Copyright (c) 2019 Marsel Akhkamov
 */
 
 #include "config.h"
-#ifdef TM1637
+#ifdef TM_1637
 #include "tm.h"
 
 #if TM_SHOW_BANNER
-byte welcome_banner[] = {TM_F, TM_i, TM_r, TM_e, TM_empty, TM_empty, TM_S, TM_t, TM_a, TM_r, TM_t};
+//byte welcome_banner[] = {TM_F, TM_i, TM_r, TM_e, TM_empty, TM_empty, TM_S, TM_t, TM_a, TM_r, TM_t};
 #endif
 
 
 
 void tm_setup() {
-  disp.clear();
-  disp.brightness(TM_BRIGHTNESS);
+  //disp.clear();
+  //disp.brightness(TM_BRIGHTNESS);
+  tm1637
+  disp.setBrightness(TM_BRIGHTNESS);
 #if TM_SHOW_BANNER
-  disp.runningString(welcome_banner, sizeof(welcome_banner), 300);  //время в миллисекундах!
+  //disp.runningString(welcome_banner, sizeof(welcome_banner), 300);  //время в миллисекундах!
 #endif
   LOG(printf_P, PSTR("TM1637 was initialized \n"));
 }
